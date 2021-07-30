@@ -1,0 +1,174 @@
+#include <dt-bindings/PowerSwitch/monitor.h>
+
+/ {
+	chosen {
+		zephyr,code-partition = &slot0_partition;
+		zephyr,update-partition = &slot1_partition;
+		sep,uart = &arduino_serial;
+	};
+
+	pwr {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		sw@0 {
+			reg = < 0x0 >;
+			compatible = "ppl,e-switch";
+			label = "SW1";
+			enable-gpios = <&gpioa 10 GPIO_ACTIVE_HIGH>; /* D2 */
+			monitor-gpios = <&gpioc 4 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>; /* D1 */
+			monitor-states = <PPL_MONITOR_INACTIVE PPL_MONITOR_DONT_CARE PPL_MONITOR_ACTIVE PPL_MONITOR_DONT_CARE>;
+			power-good-delay = <1000000>; /* 100 us max delay between enable and power good */
+			power-off-delay = <1000000>; /* 100 us max delay between enable and power good */
+			status = "okay";
+		};
+	};
+
+	soc {
+
+		pinctrl: pin-controller@48000000 {
+			hrtim1_cha1_pa8: hrtim1_cha1_pa8 {
+				pinmux = <STM32_PINMUX('A', 8, AF13)>;
+				slew-rate = "very-high-speed";
+			};
+		};
+
+		hrtim@40016800 {
+			reg = <0x40016800 0xc00>;
+			compatible = "st,hrtim";
+			interrupts = <67 0>, <73 0>;
+			interrupt-names = "MASTER_TIMER", "FLT";
+			clocks = <&rcc STM32_CLOCK_BUS_APB2 0x04000000>;
+			status = "okay";
+			label = "HRTIM";
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			hrtim_cha: cha@0 {
+				reg = <0x0>;
+				compatible = "st,hrtim-channel";
+				interrupts = <68 0>;
+				status = "okay";
+			};
+		};
+	};
+
+	target_id: tid {
+		label = "TID";
+		compatible = "leica,target-id";
+		hrtim-channel = <&hrtim_cha>;
+		status = "okay";
+		pinctrl-0 = <&hrtim1_cha1_pa8>;
+	};
+};
+
+&arduino_i2c {
+	status= "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+
+	DPS310@77 {
+		status = "disabled";
+		compatible = "infineon,dps310";
+		reg = <0x77>;
+		label = "TEMP";
+	};
+
+	hmi_leds: lp5569@32 {
+		compatible = "ti,lp5569";
+		reg = <0x32>;
+		label = "HMI_LED";
+		status = "okay";
+		max_current = <2000>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led_prism_g: led@0 {
+			reg = <0>;
+			current = <200>;
+			charge-pump;
+		};
+		led_prism_r: led@1 {
+			reg = <1>;
+			current = <200>;
+		};
+		led_bt_g: led@2 {
+			reg = <2>;
+			current = <200>;
+			charge-pump;
+		};
+		led_bt_b: led@3 {
+			reg = <3>;
+			current = <200>;
+			charge-pump;
+		};
+		led_bat_g: led@4 {
+			reg = <4>;
+			current = <200>;
+			charge-pump;
+		};
+		led_bat_r: led@5 {
+			reg = <5>;
+			current = <200>;
+		};
+	};
+};
+
+&arduino_spi {
+	status = "okay";
+	cs-gpios = <&gpiob 6 (GPIO_ACTIVE_LOW)>; /*Arduino CS/D10*/
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	nfc_reader: clrc663@0 {
+		compatible = "nxp,clrc663";
+		reg = <0>;
+		label = "NFCReader";
+		pdown-gpios = <&gpiob 4 GPIO_ACTIVE_LOW>;   /*Arduino D5*/
+		int-gpios = <&gpiob 5 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;  /*Arduino D4*/
+		spi-max-frequency = <1000000>;
+		status = "okay";
+	};
+};
+
+&usb {
+	pinctrl-0 = <&usb_dm_pa11 &usb_dp_pa12>;
+	status = "okay";
+};
+
+&flash0 {
+	/*
+	 * For more information, see:
+	 * https://docs.zephyrproject.org/latest/guides/dts/legacy-macros.html#legacy-flash-partitions
+	 */
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+			boot_partition: partition@0 {
+				label = "mcuboot";
+				reg = <0x00000000 0x00010000>;
+				read-only;
+			};
+			slot0_partition: partition@10000 {
+				label = "image-0";
+				reg = <0x00010000 0x002F000>;
+			};
+			slot1_partition: partition@3f000 {
+				label = "image-1";
+				reg = <0x0003F000 0x002F000>;
+			};
+			scratch_partition: partition@6e000 {
+				label = "image-scratch";
+				reg = <0x0006E000 0x00010000>;
+			};
+
+			/delete-node/ partition@1f800;
+
+			storage_partition: partition@7f000 {
+				label = "storage";
+				reg = <0x0007F000 0x00001000>;
+			};
+	};
+};
